@@ -16,17 +16,23 @@ All exploratory data analysis and redundant code has been trimmmed
 
 
 ### Table summarizes merge decision with high level justifications
-Competing data:
-Wiki                     Movielens                Resolution
---------------------------------------------------------------------------
- title_wiki               title_kaggle             Drop Wikipedia (both very consitent) (kaggle slightly more consistent)
- running_time             runtime                  Keep Kaggle; fill in zeros with Wikipedia data. (wiki data had more outliers on histogram)
- budget_wiki              budget_kaggle            Keep Kaggle; fill in zeros with Wikipedia data. (wiki data had more outliers on histogram)
- box_office               revenue                  Keep Kaggle; fill in zeros with Wikipedia data.
- release_date_wiki        release_date_kaggle      Drop Wikipedia (kaggle data clean while wiki has missing data)
- Language                 original_language        Drop Wikipedia (kaggle is cleaner & more consistent)
- Production company(s)    production_companies     Drop Wikipedia
+![](images/merge_decisions.png)
 
+```
+# Table summarizes merge decision with high level justifications
+
+# Competing data:
+# Wiki                     Movielens                Resolution
+#--------------------------------------------------------------------------
+# title_wiki               title_kaggle             Drop Wikipedia (both very consitent) (kaggle slightly more consistent)
+# running_time             runtime                  Keep Kaggle; fill in zeros with Wikipedia data. (wiki data had more outliers on histogram)
+# budget_wiki              budget_kaggle            Keep Kaggle; fill in zeros with Wikipedia data. (wiki data had more outliers on histogram)
+# box_office               revenue                  Keep Kaggle; fill in zeros with Wikipedia data.
+# release_date_wiki        release_date_kaggle      Drop Wikipedia (kaggle data clean while wiki has missing data)
+# Language                 original_language        Drop Wikipedia (kaggle is cleaner & more consistent)
+# Production company(s)    production_companies     Drop Wikipedia
+
+```
 
 
 Try-except blocks used to account for unforeseen problems that may arise with new data.
