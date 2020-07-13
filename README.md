@@ -16,15 +16,14 @@ All exploratory data analysis and redundant code has been trimmmed
 
 
 ### Table summarizes merge decision with high level justifications
-![](images/merge_decisions.png)
 
-```
+```python
 # Table summarizes merge decision with high level justifications
 
 # Competing data:
 # Wiki                     Movielens                Resolution
 #--------------------------------------------------------------------------
-# title_wiki               title_kaggle             Drop Wikipedia (both very consitent) (kaggle slightly more consistent)
+# title_wiki               title_kaggle             Drop Wikipedia (both very consistent) (kaggle slightly more consistent)
 # running_time             runtime                  Keep Kaggle; fill in zeros with Wikipedia data. (wiki data had more outliers on histogram)
 # budget_wiki              budget_kaggle            Keep Kaggle; fill in zeros with Wikipedia data. (wiki data had more outliers on histogram)
 # box_office               revenue                  Keep Kaggle; fill in zeros with Wikipedia data.

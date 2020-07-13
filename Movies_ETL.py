@@ -140,7 +140,7 @@ def Movies_ETL (wiki_movies_df, kaggle_metadata_df, ratings_df):
         if re.match(r'\$\s*\d+\.?\d*\s*milli?on', s, flags=re.IGNORECASE):
 
             # remove dollar sign and " million"
-            s = re.sub('\$|\s|[a-zA-Z]','', s)
+            s = re.sub(r'\$|\s|[a-zA-Z]','', s)
 
             # convert to float and multiply by a million
             value = float(s) * 10**6
@@ -152,7 +152,7 @@ def Movies_ETL (wiki_movies_df, kaggle_metadata_df, ratings_df):
         elif re.match(r'\$\s*\d+\.?\d*\s*billi?on', s, flags=re.IGNORECASE):
 
             # remove dollar sign and " billion"
-            s = re.sub('\$|\s|[a-zA-Z]','', s)
+            s = re.sub(r'\$|\s|[a-zA-Z]','', s)
 
             # convert to float and multiply by a billion
             value = float(s) * 10**9
@@ -164,7 +164,7 @@ def Movies_ETL (wiki_movies_df, kaggle_metadata_df, ratings_df):
         elif re.match(r'\$\s*\d{1,3}(?:[,\.]\d{3})+(?!\s[mb]illion)', s, flags=re.IGNORECASE):
 
             # remove dollar sign and commas
-            s = re.sub('\$|,','', s)
+            s = re.sub(r'\$|,','', s)
 
             # convert to float
             value = float(s)
@@ -192,9 +192,6 @@ def Movies_ETL (wiki_movies_df, kaggle_metadata_df, ratings_df):
 
     # remove any values between a dollar sign and a hyphen (for budgets given in ranges)
     budget = budget.str.replace(r'\$.*[-—–](?![a-z])', '$', regex=True)
-
-    matches_form_one = budget.str.contains(form_one, flags=re.IGNORECASE)
-    matches_form_two = budget.str.contains(form_two, flags=re.IGNORECASE)
 
     # Decision made to ignore the remaining 30 budgets with issues
     budget = budget.str.replace(r'\[\d+\]\s*', '')
@@ -261,10 +258,110 @@ def Movies_ETL (wiki_movies_df, kaggle_metadata_df, ratings_df):
     ratings_df['timestamp'] = pd.to_datetime(ratings_df['timestamp'], unit='s')
 
 
+    # Merge Wikipedia and Kaggle Metadata
+
+    # Print out a list of the columns so we can identify which ones are redundant
+    movies_df = pd.merge(wiki_movies_df, kaggle_metadata_df, on='imdb_id', suffixes=['_wiki','_kaggle'])
 
 
+    # Table summarizes merge decision with high level justifications
+    # Competing data:
+    # Wiki                     Movielens                Resolution
+    #--------------------------------------------------------------------------
+    # title_wiki               title_kaggle             Drop Wikipedia (both very consistent) (kaggle slightly more consistent)
+    # running_time             runtime                  Keep Kaggle; fill in zeros with Wikipedia data. (wiki data had more outliers on histogram)
+    # budget_wiki              budget_kaggle            Keep Kaggle; fill in zeros with Wikipedia data. (wiki data had more outliers on histogram)
+    # box_office               revenue                  Keep Kaggle; fill in zeros with Wikipedia data.
+    # release_date_wiki        release_date_kaggle      Drop Wikipedia (kaggle data clean while wiki has missing data)
+    # Language                 original_language        Drop Wikipedia (kaggle is cleaner & more consistent)
+    # Production company(s)    production_companies     Drop Wikipedia
 
+    # First, we’ll drop the title_wiki, release_date_wiki, Language, and Production company(s) columns
+    movies_df.drop(columns=['title_wiki','release_date_wiki','Language','Production company(s)'], inplace=True)
+
+    # Fills in missing data for a column pair and then drops the redundant column
+    def fill_missing_kaggle_data(df, kaggle_column, wiki_column):
+        df[kaggle_column] = df.apply(
+            lambda row: row[wiki_column] if row[kaggle_column] == 0 else row[kaggle_column]
+            , axis=1)
+        df.drop(columns=wiki_column, inplace=True)
+
+    # Now we can run the function for the three column pairs that we decided to fill in zeros.
+    fill_missing_kaggle_data(movies_df, 'runtime', 'running_time')
+    fill_missing_kaggle_data(movies_df, 'budget_kaggle', 'budget_wiki')
+    fill_missing_kaggle_data(movies_df, 'revenue', 'box_office')
+
+    #check that there aren’t any columns with only one value, since that doesn’t really provide any information
+    # Don’t forget, we need to convert lists to tuples for value_counts() to work.
+
+    for col in movies_df.columns:
+        lists_to_tuples = lambda x: tuple(x) if type(x) == list else x
+        value_counts = movies_df[col].apply(lists_to_tuples).value_counts(dropna=False)
+        num_values = len(value_counts)
+        if num_values == 1:
+            movies_df[col].value_counts(dropna=False)
+
+    # reorder coloumns
+    movies_df = movies_df.loc[:, ['imdb_id','id','title_kaggle','original_title','tagline','belongs_to_collection','url','imdb_link', 
+                            'runtime','budget_kaggle','revenue','release_date_kaggle','popularity','vote_average','vote_count',
+                            'genres','original_language','overview','spoken_languages','Country',
+                            'production_companies','production_countries','Distributor',
+                            'Producer(s)','Director','Starring','Cinematography','Editor(s)','Writer(s)','Composer(s)','Based on'
+                            ]]
+
+    # update names
+    movies_df.rename({'id':'kaggle_id',
+                    'title_kaggle':'title',
+                    'url':'wikipedia_url',
+                    'budget_kaggle':'budget',
+                    'release_date_kaggle':'release_date',
+                    'Country':'country',
+                    'Distributor':'distributor',
+                    'Producer(s)':'producers',
+                    'Director':'director',
+                    'Starring':'starring',
+                    'Cinematography':'cinematography',
+                    'Editor(s)':'editors',
+                    'Writer(s)':'writers',
+                    'Composer(s)':'composers',
+                    'Based on':'based_on'
+                    }, axis='columns', inplace=True)
+
+
+    # rating data
+    rating_counts_df = ratings_df.groupby(['movieId','rating'], as_index=False).count()
+
+    #The choice of renaming “userId” to “count” is arbitrary. 
+    # Both “userId” and “timestamp” have the same information, so we could use either one.
+    rating_counts_df = ratings_df.groupby(['movieId','rating'], as_index=False).count() \
+                    .rename({'userId':'count'}, axis=1)     
+
+    #pivot this data so that movieId is the index, 
+    # the columns will be all the rating values, and the rows will be the counts for each rating value.
+    rating_counts_df = ratings_df.groupby(['movieId','rating'], as_index=False).count() \
+                    .rename({'userId':'count'}, axis=1) \
+                    .pivot(index='movieId',columns='rating', values='count')
+
+    # rename the columns so they’re easier to understand. 
+    # We’ll prepend rating_ to each column with a list comprehension:
+    rating_counts_df.columns = ['rating_' + str(col) for col in rating_counts_df.columns]
+
+    # use a left merge, since we want to keep everything in movies_df
+    movies_with_ratings_df = pd.merge(movies_df, rating_counts_df, left_on='kaggle_id', right_index=True, how='left')
+
+    # Finally, because not every movie got a rating for each rating level, 
+    # there will be missing values instead of zeros. We have to fill those in ourselves, like this:
+    movies_with_ratings_df[rating_counts_df.columns] = movies_with_ratings_df[rating_counts_df.columns].fillna(0)
+
+
+    # To save the movies_df DataFrame to a SQL table, 
+    # we only have to specify the name of the table and the engine in the to_sql() method
+    movies_df.to_sql(name='movies', con=engine)
 
 
     return 
 #-----------------------------------------------------------------------------------------------
+
+
+#Test the function
+Movies_ETL (wiki_movies_df, kaggle_metadata_df, ratings_df)
