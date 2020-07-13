@@ -19,6 +19,7 @@ resources_file_path = os.path.join("resources", 'wikipedia.movies.json')
 data_file_path = os.path.join("data/")
 #-----------------------------------------------------------------------------------------------
 
+
 # -----EXTRACTIONS (this may need to be in the function?)
 
 # Wiki Movies Data
@@ -353,15 +354,18 @@ def Movies_ETL (wiki_movies_df, kaggle_metadata_df, ratings_df):
     # there will be missing values instead of zeros. We have to fill those in ourselves, like this:
     movies_with_ratings_df[rating_counts_df.columns] = movies_with_ratings_df[rating_counts_df.columns].fillna(0)
 
+    # 
 
     # To save the movies_df DataFrame to a SQL table, 
-    # we only have to specify the name of the table and the engine in the to_sql() method
-    movies_df.to_sql(name='movies', con=engine)
-
-
+    try:
+        movies_df.to_sql(name='movies', con=engine, if_exists='replace')
+    except Exception as ex: 
+        print(type(ex).__name__)
+        print("Error loading to Postgres")
+        
     return 
 #-----------------------------------------------------------------------------------------------
 
 
-#Test the function
+# *****Test the function*****
 Movies_ETL (wiki_movies_df, kaggle_metadata_df, ratings_df)
