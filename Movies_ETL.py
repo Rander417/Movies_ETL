@@ -5,41 +5,45 @@ import os
 import time
 import re #regular expressions
 from sqlalchemy import create_engine #enables connection to database
+
 from config import db_password
 
-
-# -----CONNECTIONS
-
-#Postgres
-connection_string = f'postgres://postgres:{db_password}@localhost:5432/movie_data'
-engine = create_engine(connection_string)
-
-# Relative path for data sources
-resources_file_path = os.path.join("resources", 'wikipedia.movies.json')
-data_file_path = os.path.join("data/")
-#-----------------------------------------------------------------------------------------------
-
-
-# -----EXTRACTIONS (this may need to be in the function?)
-
-# Wiki Movies Data
-with open(resources_file_path, mode='r') as file:
-    wiki_movies_raw = json.load(file)
-# Convert the wiki-movies data to a Data Frame
-wiki_movies_df = pd.DataFrame(wiki_movies_raw)
-
-# Kaggle Data
-kaggle_metadata_df = pd.read_csv(f'{data_file_path}movies_metadata.csv')
-
-ratings_df = pd.read_csv(f'{data_file_path}ratings.csv')
-#-----------------------------------------------------------------------------------------------
+# Variables to pass in for testing
+wiki_movies_df = pd.DataFrame()
+kaggle_metadata_df = pd.DataFrame()
+ratings_df = pd.DataFrame()
 
 
 # -----ETL FUNCTION
 #Function takes 3 Dataframes
 def Movies_ETL (wiki_movies_df, kaggle_metadata_df, ratings_df):
 
+    # -----CONNECTIONS
+    #Postgres
+    connection_string = f'postgres://postgres:{db_password}@localhost:5432/movie_data'
+    engine = create_engine(connection_string)
 
+    # Relative path for data sources
+    resources_file_path = os.path.join("resources", 'wikipedia.movies.json')
+    data_file_path = os.path.join("data/")
+    #------------------
+
+    # -----EXTRACTIONS
+
+    # Wiki Movies Data
+    with open(resources_file_path, mode='r') as file:
+        wiki_movies_raw = json.load(file)
+    # Convert the wiki-movies data to a Data Frame
+    wiki_movies_df = pd.DataFrame(wiki_movies_raw)
+
+    # Kaggle Data
+    kaggle_metadata_df = pd.read_csv(f'{data_file_path}movies_metadata.csv')
+
+    ratings_df = pd.read_csv(f'{data_file_path}ratings.csv')
+    # -----END EXTRACTIONS
+
+
+    # -----TRANSFORMATION
     # Filter raw wikipedia data to just movies
     # Only those entries that have a director, an IMDb link and NO episodes gives us movies
     wiki_movies = [movie for movie in wiki_movies_raw
@@ -354,17 +358,42 @@ def Movies_ETL (wiki_movies_df, kaggle_metadata_df, ratings_df):
     # there will be missing values instead of zeros. We have to fill those in ourselves, like this:
     movies_with_ratings_df[rating_counts_df.columns] = movies_with_ratings_df[rating_counts_df.columns].fillna(0)
 
-    # 
+    # -----END TRANSFORMATION
 
-    # To save the movies_df DataFrame to a SQL table, 
+    # -----LOAD to Postgres
+    # Save the movies_df DataFrame to a Database table
     try:
         movies_df.to_sql(name='movies', con=engine, if_exists='replace')
     except Exception as ex: 
         print(type(ex).__name__)
-        print("Error loading to Postgres")
-        
-    return 
-#-----------------------------------------------------------------------------------------------
+        print("Error loading Movie_df to Postgres")
+
+
+    # clear the ratings table first
+    engine.execute("TRUNCATE TABLE ratings;")
+
+    # Save the rating_df DataFrame to a Database table 
+    try:
+        rows_imported = 0
+        #get the start_time
+        start_time = time.time()
+
+        for data in pd.read_csv(f'{data_file_path}ratings.csv', chunksize=1000000):
+            print(f'importing rows {rows_imported} to {rows_imported + len(data)}...', end='')
+            data.to_sql(name='ratings', con=engine, if_exists='append')
+            rows_imported += len(data)
+
+            #add elapsed time to final print out
+            print(f'Done. {time.time() - start_time} total seconds elapsed')
+
+    except Exception as ex: 
+        print(type(ex).__name__)
+        print("Error loading ratings_df to Postgres")
+
+    # -----END LOAD to Postgres
+
+
+# END ETL FUNCTION-----------------------------------------------------------------------------------------------
 
 
 # *****Test the function*****
